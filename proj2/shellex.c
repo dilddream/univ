@@ -13,7 +13,7 @@ int main()
             exit(0);
 
         /* Evaluate */
-        eval(cmdline);
+        pipeline(cmdline);
     } 
 }
 /* $end shellmain */
@@ -44,18 +44,15 @@ void eval(char *cmdline)
     if (!builtin_command(argv)) { // cd, exit, quit, &
 
     
-    /* */
-        if (execve(argv[0], argv, environ) < 0) {	//ex) /bin/ls ls -al &
-            printf("%s: Command not found.\n", argv[0]);
-            exit(0);
+        /* fork & execv */
+        if ((pid = fork()) == 0) {
+            if (execvp(argv[0], argv) < 0) {
+                fprintf(stderr, "%s: Command not found.\n", argv[0]);
+                exit(0);
+            }
         }
 
-
-
-
-
-
-
+        wait(-1);
 
 
         /* Parent waits for foreground job to terminate */
@@ -65,6 +62,8 @@ void eval(char *cmdline)
         else//when there is backgrount process!
             printf("%d %s", pid, cmdline);
     }
+
+
     return;
 }
 

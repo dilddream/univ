@@ -6,7 +6,7 @@ PROGS = shellex
 
 all: $(PROGS)
 
-shellex: shellex.c csapp.c builtin_command.c
+shellex: shellex.c csapp.c builtin_command.c pipeline.c
 
 clean:
 	rm -rf *~ $(PROGS)

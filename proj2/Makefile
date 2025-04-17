@@ -2,11 +2,13 @@ CC = gcc
 CFLAGS = -Og
 LDLIBS = -lpthread
 
-PROGS = shellex
+SRCS = main.c csapp.c command_handle.c execute.c jobs.c
+PROGS = myshell
 
 all: $(PROGS)
 
-shellex: main.c shellex.c csapp.c builtin_command.c pipeline.c jobs.c
+$(PROGS): $(SRCS)
+	$(CC) $(CFLAGS) $(SRCS) -o $(PROGS) $(LDLIBS)
 
 clean:
 	rm -rf *~ $(PROGS)

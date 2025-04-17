@@ -2,6 +2,9 @@
     "C_Cpp.default.compilerPath": "/usr/bin/g++",
     "C_Cpp.errorSquiggles": "disabled",
     "files.associations": {
-        "errno.h": "c"
+        "errno.h": "c",
+        "additional.h": "c",
+        "csapp.h": "c",
+        "pipeline.h": "c"
     }
 }

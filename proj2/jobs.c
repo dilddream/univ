@@ -235,7 +235,10 @@ void sigchld_handler(int sig) {
         job_t* job = get_job_pgid(pgid);
         if (!job) continue;
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
-            delete_job(pgid);
+            // only delete when all processes in the job have completed
+            if (job_is_completed(pgid) == 1) {
+                delete_job(pgid);
+            }
         } else if (WIFSTOPPED(status)) {
             update_job_state(pgid, ST);
         } else if (WIFCONTINUED(status)) {
@@ -269,7 +272,7 @@ void do_bg(char **argv) {
     if (*p=='%') p++;
     int jid = atoi(p);
     job_t *job = get_job_jid(jid);
-    if (!job) { printf("bg: %s: no such job\n", argv[1]); return; }
+    if (!job) { printf("bg: %s: no such job\n"); return; }
     kill(-job->pgid, SIGCONT);
     update_job_state(job->pgid, BG);
     printf("[%d] %s &\n", job->job_id, job->cmdline);
@@ -282,17 +285,18 @@ void do_fg(char **argv) {
     if (*p=='%') p++;
     int jid = atoi(p);
     job_t *job = get_job_jid(jid);
-    if (!job) { printf("fg: %s: no such job\n", argv[1]); return; }
-    // continue the stopped job
-    kill(-job->pgid, SIGCONT);
+    if (!job) { printf("fg: %s: no such job\n"); return; }
     // set state to foreground
     update_job_state(job->pgid, FG);
-
-    // give terminal control to job
+    // give terminal control to job first
     tcsetpgrp(STDIN_FILENO, job->pgid);
+    // continue the stopped job in its process group under foreground terminal
+    kill(-job->pgid, SIGCONT);
+
+    // wait for each process in pipeline: catch stop on any
     int stopped = 0;
+    int status;
     for (int i = 0; i < job->n_processes; i++) {
-        int status;
         waitpid(job->pids[i], &status, WUNTRACED);
         if (WIFSTOPPED(status)) stopped = 1;
     }

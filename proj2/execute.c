@@ -92,7 +92,7 @@ void command(char *cmdline)
     if (bg) {
         add_job(pid, pids, 1, BG, cmdline);
         printf("[%d] %d\n", 
-            get_job_jid(pid)->job_id, pid);
+            get_job_pgid(pid)->job_id, pid);
     }
     // foreground
     else {

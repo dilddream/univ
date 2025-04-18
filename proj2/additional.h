@@ -29,8 +29,9 @@ typedef struct pipeline {
 
 /* preprocessor function */
 int parseline(char *buf, char **argv);
+int parse_pipeline(char* cmdline, pipeline_t *pip);
 void pipeline(char* cmdline, int bg);
-
+int execute_pipeline(pipeline_t *pip, int cmd_idx, pid_t *pids);
 
 
 

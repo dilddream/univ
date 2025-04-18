@@ -29,9 +29,8 @@ typedef struct pipeline {
 
 /* preprocessor function */
 int parseline(char *buf, char **argv);
-int parse_pipeline(char* cmdline, pipeline_t *pip);
 void pipeline(char* cmdline, int bg);
-int execute_pipeline(pipeline_t *pip, int cmd_idx, pid_t *pids);
+
 
 
 
@@ -75,6 +74,8 @@ typedef struct job_t {
 
 extern job_t *job_list;
 
+/* job control globals */
+extern pid_t shell_pgid;
 
 /* job function -------------------------- */
 
@@ -95,8 +96,25 @@ int update_job_state(pid_t pgid, int state);       /* update job state */
 int job_is_completed(pid_t pgid);                   /* check if job is completed */
 int job_is_stopped(pid_t pgid);                     /* check if job is stopped */
 
+/* remove completed jobs */
+void cleanup_jobs(void);
+
 /* list job */
 void list_job(job_t* job);                           /* list all jobs */
+
+/* ------------------------------- signal header --------------------------------- */
+/* signal handlers for job control */
+void sigchld_handler(int sig);
+void sigint_handler(int sig);
+void sigtstp_handler(int sig);
+
+/* get current foreground job */
+job_t* get_fg_job(void);
+
+/* job control builtins */
+void do_bg(char **argv);
+void do_fg(char **argv);
+void do_kill(char **argv);
 
 
 

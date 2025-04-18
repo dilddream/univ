@@ -25,7 +25,22 @@ int builtin_command(char **argv) {
 
     // jobs command
     if (!strcmp(argv[0], "jobs")) {
+        cleanup_jobs();
         list_job(job_list);
+        return 0;
+    }
+
+    // bg, fg, kill builtins
+    if (!strcmp(argv[0], "bg")) {
+        do_bg(argv);
+        return 0;
+    }
+    if (!strcmp(argv[0], "fg")) {
+        do_fg(argv);
+        return 0;
+    }
+    if (!strcmp(argv[0], "kill")) {
+        do_kill(argv);
         return 0;
     }
 
@@ -74,6 +89,9 @@ void command(char *cmdline)
     // child process
     if (pid == 0) { 
         setpgid(0, 0); // new process group
+        // allow child to receive signals
+        Signal(SIGINT, SIG_DFL);
+        Signal(SIGTSTP, SIG_DFL);
 
         if (execvp(argv[0], argv) < 0) {
             fprintf(stderr, "%s: command not found\n", argv[0]);
@@ -81,9 +99,14 @@ void command(char *cmdline)
         }
     }
 
-    // parent process`
+    // parent process
     int status;
     setpgid(pid, pid);
+
+    if (!bg) {
+        // foreground: take terminal control
+        tcsetpgrp(STDIN_FILENO, pid);
+    }
 
     pid_t pids[1] = {pid};
 
@@ -91,13 +114,23 @@ void command(char *cmdline)
     // background
     if (bg) {
         add_job(pid, pids, 1, BG, cmdline);
-        printf("[%d] %d\n", 
-            get_job_pgid(pid)->job_id, pid);
+        job_t *job = get_job_pgid(pid);
+        printf("[%d] %d\n", job->job_id, job->pgid);
     }
     // foreground
     else {
-        add_job(pid, pids, 1, FG, cmdline);
-        waitpid(pid, &status, 0);
+        // wait for job to terminate or stop
+        int status;
+        waitpid(pid, &status, WUNTRACED);
+        // restore control of terminal
+        tcsetpgrp(STDIN_FILENO, shell_pgid);
+        if (WIFSTOPPED(status)) {
+            // add to job list as stopped
+            pid_t p = pid;
+            add_job(p, &p, 1, ST, cmdline);
+            job_t *job = get_job_pgid(p);
+            printf("[%d] Stopped   %s", job->job_id, job->cmdline);
+        }
     }
 }
 

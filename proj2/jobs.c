@@ -201,6 +201,7 @@ void list_job(job_t* job) {
     printf("[%d]   ", job->job_id);
     switch (job->state) {
         case BG:
+        case FG:
             printf("Running");
             break;
         case ST: 
@@ -211,4 +212,128 @@ void list_job(job_t* job) {
             break;
     }
     printf("            %s", job->cmdline);
+}
+
+// get current foreground job
+job_t* get_fg_job(void) {
+    job_t* j = job_list;
+    while (j) {
+        if (j->state == FG)
+            return j;
+        j = j->next;
+    }
+    return NULL;
+}
+
+// SIGCHLD handler: reap children, update or delete jobs
+void sigchld_handler(int sig) {
+    int olderrno = errno;
+    pid_t pid;
+    int status;
+    while ((pid = waitpid(-1, &status, WNOHANG|WUNTRACED|WCONTINUED)) > 0) {
+        pid_t pgid = getpgid(pid);
+        job_t* job = get_job_pgid(pgid);
+        if (!job) continue;
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            delete_job(pgid);
+        } else if (WIFSTOPPED(status)) {
+            update_job_state(pgid, ST);
+        } else if (WIFCONTINUED(status)) {
+            update_job_state(pgid, BG);
+        }
+    }
+    errno = olderrno;
+}
+
+// SIGINT handler: forward Ctrl+C to foreground job
+void sigint_handler(int sig) {
+    job_t* job = get_fg_job();
+    if (job) {
+        kill(-job->pgid, SIGINT);
+    }
+}
+
+// SIGTSTP handler: forward Ctrl+Z to foreground job
+void sigtstp_handler(int sig) {
+    job_t* job = get_fg_job();
+    if (job) {
+        kill(-job->pgid, SIGTSTP);
+        update_job_state(job->pgid, ST);
+    }
+}
+
+// Resume a stopped job in background
+void do_bg(char **argv) {
+    if (!argv[1]) { printf("bg: missing job number\n"); return; }
+    char *p = argv[1];
+    if (*p=='%') p++;
+    int jid = atoi(p);
+    job_t *job = get_job_jid(jid);
+    if (!job) { printf("bg: %s: no such job\n", argv[1]); return; }
+    kill(-job->pgid, SIGCONT);
+    update_job_state(job->pgid, BG);
+    printf("[%d] %s &\n", job->job_id, job->cmdline);
+}
+
+// Bring a job to foreground
+void do_fg(char **argv) {
+    if (!argv[1]) { printf("fg: missing job number\n"); return; }
+    char *p = argv[1];
+    if (*p=='%') p++;
+    int jid = atoi(p);
+    job_t *job = get_job_jid(jid);
+    if (!job) { printf("fg: %s: no such job\n", argv[1]); return; }
+    // continue the stopped job
+    kill(-job->pgid, SIGCONT);
+    // set state to foreground
+    update_job_state(job->pgid, FG);
+
+    // give terminal control to job
+    tcsetpgrp(STDIN_FILENO, job->pgid);
+    int stopped = 0;
+    for (int i = 0; i < job->n_processes; i++) {
+        int status;
+        waitpid(job->pids[i], &status, WUNTRACED);
+        if (WIFSTOPPED(status)) stopped = 1;
+    }
+    // restore terminal to shell
+    tcsetpgrp(STDIN_FILENO, shell_pgid);
+    if (stopped) {
+        // job remained stopped, update state
+        update_job_state(job->pgid, ST);
+        printf("[%d] Stopped   %s", job->job_id, job->cmdline);
+    } else {
+        // job exited or terminated
+        delete_job(job->pgid);
+    }
+}
+
+// Kill a job
+void do_kill(char **argv) {
+    if (!argv[1]) { printf("kill: missing job number\n"); return; }
+    char *p = argv[1];
+    if (*p=='%') p++;
+    int jid = atoi(p);
+    job_t *job = get_job_jid(jid);
+    if (!job) { printf("kill: %s: no such job\n", argv[1]); return; }
+    kill(-job->pgid, SIGTERM);
+}
+
+// remove completed jobs
+void cleanup_jobs(void) {
+    // Remove completed jobs at head
+    while (job_list && job_is_completed(job_list->pgid) == 1) {
+        delete_job(job_list->pgid);
+    }
+    // Remove completed jobs beyond head
+    job_t *prev = job_list;
+    while (prev && prev->next) {
+        job_t *curr = prev->next;
+        if (job_is_completed(curr->pgid) == 1) {
+            delete_job(curr->pgid);
+            // prev->next updated by delete_job
+        } else {
+            prev = curr;
+        }
+    }
 }
